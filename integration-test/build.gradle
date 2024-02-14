@@ -6,6 +6,7 @@ plugins {
 dependencies {
     implementation project(':bitcoinj-core')
     implementation project(':bitcoinj-examples')
+    implementation 'org.mongodb:mongodb-driver-sync:4.11.1'
 
     testImplementation 'org.slf4j:slf4j-jdk14:2.0.12'
     testImplementation "org.junit.jupiter:junit-jupiter-api:5.10.0"

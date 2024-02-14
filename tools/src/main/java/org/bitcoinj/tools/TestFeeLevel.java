@@ -16,6 +16,9 @@
 
 package org.bitcoinj.tools;
 
+import com.mongodb.client.MongoClient;
+import com.mongodb.client.MongoClients;
+import com.mongodb.client.MongoDatabase;
 import org.bitcoinj.base.BitcoinNetwork;
 import org.bitcoinj.base.Coin;
 import org.bitcoinj.base.ScriptType;
@@ -27,9 +30,16 @@ import org.bitcoinj.utils.BriefLogFormatter;
 import org.bitcoinj.wallet.KeyChainGroupStructure;
 import org.bitcoinj.wallet.SendRequest;
 import org.bitcoinj.wallet.Wallet;
+import org.bson.codecs.configuration.CodecProvider;
+import org.bson.codecs.configuration.CodecRegistry;
+import org.bson.codecs.pojo.PojoCodecProvider;
 
 import java.io.File;
 import java.util.concurrent.ExecutionException;
+
+import static com.mongodb.MongoClientSettings.getDefaultCodecRegistry;
+import static org.bson.codecs.configuration.CodecRegistries.fromProviders;
+import static org.bson.codecs.configuration.CodecRegistries.fromRegistries;
 
 /**
  * A program that sends a transaction with the specified fee and measures how long it takes to confirm.
@@ -49,6 +59,12 @@ public class TestFeeLevel {
         Coin feeRateToTest = Coin.valueOf(Long.parseLong(args[0]));
         System.out.println("Fee rate to test is " + feeRateToTest.toFriendlyString() + "/kB");
 
+        CodecProvider pojoCodecProvider = PojoCodecProvider.builder().automatic(true).build();
+        CodecRegistry pojoCodecRegistry = fromRegistries(getDefaultCodecRegistry(), fromProviders(pojoCodecProvider));
+
+        String uri = "mongodb://127.0.0.1:27017/?retryWrites=true&w=majority";
+        MongoClient mongoClient = MongoClients.create(uri);
+        MongoDatabase database = mongoClient.getDatabase("WalletAPI").withCodecRegistry(pojoCodecRegistry);
         kit = new WalletAppKit(BitcoinNetwork.MAINNET, ScriptType.P2WPKH, KeyChainGroupStructure.BIP32, new File("."), "testfeelevel");
         kit.startAsync();
         kit.awaitRunning();

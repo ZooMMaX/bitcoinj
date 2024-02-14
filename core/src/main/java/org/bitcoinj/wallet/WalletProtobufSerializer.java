@@ -21,6 +21,7 @@ import com.google.protobuf.ByteString;
 import com.google.protobuf.CodedInputStream;
 import com.google.protobuf.CodedOutputStream;
 import com.google.protobuf.WireFormat;
+import com.mongodb.client.MongoDatabase;
 import org.bitcoinj.base.BitcoinNetwork;
 import org.bitcoinj.base.Coin;
 import org.bitcoinj.base.Network;
@@ -59,14 +60,7 @@ import java.math.BigInteger;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
+import java.util.*;
 
 /**
  * Serialize and de-serialize a wallet to a byte stream containing a
@@ -162,6 +156,16 @@ public class WalletProtobufSerializer {
         final CodedOutputStream codedOutput = CodedOutputStream.newInstance(output, this.walletWriteBufferSize);
         walletProto.writeTo(codedOutput);
         codedOutput.flush();
+    }
+
+    public void writeWalletMongoDB(Wallet wallet, MongoDatabase db, String walletName) throws IOException {
+        Protos.Wallet walletProto = walletToProto(wallet);
+        final ByteArrayOutputStream output = new ByteArrayOutputStream();
+        final CodedOutputStream codedOutput = CodedOutputStream.newInstance(output, this.walletWriteBufferSize);
+        walletProto.writeTo(codedOutput);
+        codedOutput.flush();
+        String walletString = Base64.getEncoder().encodeToString(output.toByteArray());
+        db.getCollection("wallets").insertOne(new org.bson.Document(walletName, walletString));
     }
 
     /**

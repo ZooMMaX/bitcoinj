@@ -21,6 +21,7 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ArrayListMultimap;
 import com.google.common.math.IntMath;
 import com.google.protobuf.ByteString;
+import com.mongodb.client.MongoDatabase;
 import net.jcip.annotations.GuardedBy;
 import org.bitcoinj.base.BitcoinNetwork;
 import org.bitcoinj.base.Network;
@@ -637,6 +638,30 @@ public class Wallet extends BaseTaggableObject
     public Wallet(Network network, KeyChainGroup keyChainGroup) {
         this.network = Objects.requireNonNull(network);
         this.params = NetworkParameters.of(network);
+        this.addressParser = AddressParser.getDefault(network);
+        this.coinSelector = DefaultCoinSelector.get(network);
+        this.keyChainGroup = Objects.requireNonNull(keyChainGroup);
+        watchedScripts = new HashSet<>();
+        unspent = new HashMap<>();
+        spent = new HashMap<>();
+        pending = new HashMap<>();
+        dead = new HashMap<>();
+        transactions = new HashMap<>();
+        extensions = new HashMap<>();
+        // Use a linked hash map to ensure ordering of event listeners is correct.
+        confidenceChanged = new LinkedHashMap<>();
+        signers = new ArrayList<>();
+        addTransactionSigner(new LocalTransactionSigner());
+        createTransientState();
+    }
+
+    private MongoDatabase db;
+    private String walletName;
+    public Wallet(Network network, KeyChainGroup keyChainGroup, MongoDatabase db, String walletName) {
+        this.network = Objects.requireNonNull(network);
+        this.params = NetworkParameters.of(network);
+        this.db = Objects.requireNonNull(db);
+        this.walletName = Objects.requireNonNull(walletName);
         this.addressParser = AddressParser.getDefault(network);
         this.coinSelector = DefaultCoinSelector.get(network);
         this.keyChainGroup = Objects.requireNonNull(keyChainGroup);
@@ -1697,6 +1722,17 @@ public class Wallet extends BaseTaggableObject
         }
     }
 
+    public void saveToMongoDB() {
+        lock.lock();
+        try {
+            new WalletProtobufSerializer().writeWalletMongoDB(this, db, walletName);
+        } catch (IOException e) {
+            log.error("Failed to save wallet to MongoDB", e);
+        } finally {
+            lock.unlock();
+        }
+    }
+
     /**
      * Saves the wallet first to the given temporary file, then renames to the destination file. This is done to make
      * the save an atomic operation.
@@ -1855,6 +1891,15 @@ public class Wallet extends BaseTaggableObject
                 manager.setListener(eventListener);
             vFileManager = manager;
             return manager;
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    public void autosaveToMongoDB(MongoDatabase db, String walletName, Duration delay, @Nullable WalletFiles.Listener eventListener) {
+        lock.lock();
+        try {
+            saveToMongoDB();
         } finally {
             lock.unlock();
         }

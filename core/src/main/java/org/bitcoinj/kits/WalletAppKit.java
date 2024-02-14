@@ -19,6 +19,7 @@ package org.bitcoinj.kits;
 
 import com.google.common.io.Closeables;
 import com.google.common.util.concurrent.AbstractIdleService;
+import com.mongodb.client.MongoDatabase;
 import org.bitcoinj.base.BitcoinNetwork;
 import org.bitcoinj.base.ScriptType;
 import org.bitcoinj.base.internal.PlatformUtils;
@@ -94,16 +95,20 @@ public class WalletAppKit extends AbstractIdleService implements Closeable {
     protected final NetworkParameters params;
     protected final ScriptType preferredOutputScriptType;
     protected final KeyChainGroupStructure structure;
-    protected final String filePrefix;
+    protected String filePrefix;
     protected volatile BlockChain vChain;
     protected volatile SPVBlockStore vStore;
     protected volatile Wallet vWallet;
     protected volatile PeerGroup vPeerGroup;
 
-    protected final File directory;
+    protected File directory;
     protected volatile File vWalletFile;
 
     protected boolean useAutoSave = true;
+    protected boolean useAutoSavetoMongoDB = false;
+
+    protected MongoDatabase db;
+    protected String walletName;
     protected PeerAddress[] peerAddresses;
     protected DownloadProgressTracker downloadListener = new DownloadProgressTracker();
     protected boolean autoStop = true;
@@ -151,6 +156,27 @@ public class WalletAppKit extends AbstractIdleService implements Closeable {
         this.structure = Objects.requireNonNull(structure);
         this.directory = Objects.requireNonNull(directory);
         this.filePrefix = Objects.requireNonNull(filePrefix);
+    }
+    public WalletAppKit(BitcoinNetwork network, ScriptType preferredOutputScriptType,
+                        KeyChainGroupStructure structure, MongoDatabase db, String walletName) {
+        this.network = Objects.requireNonNull(network);
+        this.params = NetworkParameters.of(this.network);
+        this.preferredOutputScriptType = Objects.requireNonNull(preferredOutputScriptType);
+        this.structure = Objects.requireNonNull(structure);
+        this.db = Objects.requireNonNull(db);
+        this.walletName = Objects.requireNonNull(walletName);
+    }
+
+    public static WalletAppKit launchWithMongo(BitcoinNetwork network, MongoDatabase db, String walletName) {
+        WalletAppKit kit = new WalletAppKit(network,
+                ScriptType.P2WPKH,
+                KeyChainGroupStructure.BIP32,
+                db,
+                walletName);
+        kit.setBlockingStartup(false);  // Don't wait for blockchain synchronization before entering RUNNING state
+        kit.startAsync();               // Connect to the network and start downloading transactions
+        kit.awaitRunning();             // Wait for the service to reach the RUNNING state
+        return kit;
     }
 
     /**
@@ -242,6 +268,7 @@ public class WalletAppKit extends AbstractIdleService implements Closeable {
         checkState(state() == State.NEW, () ->
                 "cannot call after startup");
         useAutoSave = value;
+        useAutoSavetoMongoDB = !value;
         return this;
     }
 
@@ -495,12 +522,19 @@ public class WalletAppKit extends AbstractIdleService implements Closeable {
         if (useAutoSave) {
             this.setupAutoSave(wallet);
         }
+        if (useAutoSavetoMongoDB) {
+            this.setupAutoSaveToMongoDB(wallet);
+        }
 
         return wallet;
     }
 
     protected void setupAutoSave(Wallet wallet) {
         wallet.autosaveToFile(vWalletFile, Duration.ofSeconds(5), null);
+    }
+
+    protected void setupAutoSaveToMongoDB(Wallet wallet) {
+        wallet.autosaveToMongoDB(db, walletName, Duration.ofSeconds(5), null);
     }
 
     private Wallet loadWallet(boolean shouldReplayWallet) throws Exception {

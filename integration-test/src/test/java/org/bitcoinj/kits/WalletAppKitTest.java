@@ -16,16 +16,26 @@
 
 package org.bitcoinj.kits;
 
+import com.mongodb.client.MongoClient;
+import com.mongodb.client.MongoClients;
+import com.mongodb.client.MongoDatabase;
 import org.bitcoinj.base.BitcoinNetwork;
 import org.bitcoinj.base.ScriptType;
 import org.bitcoinj.core.Context;
 import org.bitcoinj.wallet.KeyChainGroupStructure;
+import org.bson.codecs.configuration.CodecProvider;
+import org.bson.codecs.configuration.CodecRegistry;
+import org.bson.codecs.pojo.PojoCodecProvider;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.File;
+
+import static com.mongodb.MongoClientSettings.getDefaultCodecRegistry;
+import static org.bson.codecs.configuration.CodecRegistries.fromProviders;
+import static org.bson.codecs.configuration.CodecRegistries.fromRegistries;
 
 /**
  * WalletAppKit Functional/Integration test. Uses {@link BitcoinNetwork#TESTNET} so is {@code @Ignore}d.
@@ -41,6 +51,13 @@ public class WalletAppKitTest {
     @BeforeEach
     void setupTest(@TempDir File tempDir) {
         Context.propagate(new Context());
+
+        CodecProvider pojoCodecProvider = PojoCodecProvider.builder().automatic(true).build();
+        CodecRegistry pojoCodecRegistry = fromRegistries(getDefaultCodecRegistry(), fromProviders(pojoCodecProvider));
+
+        String uri = "mongodb://127.0.0.1:27017/?retryWrites=true&w=majority";
+        MongoClient mongoClient = MongoClients.create(uri);
+        MongoDatabase database = mongoClient.getDatabase("WalletAPI").withCodecRegistry(pojoCodecRegistry);
         kit = new WalletAppKit(network,
                 ScriptType.P2WPKH,
                 KeyChainGroupStructure.BIP43,

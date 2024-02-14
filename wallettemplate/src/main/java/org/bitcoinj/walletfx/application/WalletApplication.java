@@ -17,6 +17,9 @@
 package org.bitcoinj.walletfx.application;
 
 import com.google.common.util.concurrent.Service;
+import com.mongodb.client.MongoClient;
+import com.mongodb.client.MongoClients;
+import com.mongodb.client.MongoDatabase;
 import javafx.application.Platform;
 import javafx.scene.input.KeyCombination;
 import javafx.stage.Stage;
@@ -32,13 +35,19 @@ import org.bitcoinj.utils.Threading;
 import org.bitcoinj.wallet.DeterministicSeed;
 import org.bitcoinj.wallet.KeyChainGroupStructure;
 import org.bitcoinj.walletfx.utils.GuiUtils;
+import org.bson.codecs.configuration.CodecProvider;
+import org.bson.codecs.configuration.CodecRegistry;
+import org.bson.codecs.pojo.PojoCodecProvider;
 import wallettemplate.WalletSetPasswordController;
 
 import jakarta.annotation.Nullable;
 import java.io.File;
 import java.io.IOException;
 
+import static com.mongodb.MongoClientSettings.getDefaultCodecRegistry;
 import static org.bitcoinj.walletfx.utils.GuiUtils.informationalAlert;
+import static org.bson.codecs.configuration.CodecRegistries.fromProviders;
+import static org.bson.codecs.configuration.CodecRegistries.fromRegistries;
 
 /**
  * Base class for JavaFX Wallet Applications
@@ -161,6 +170,13 @@ public abstract class WalletApplication implements AppDelegate {
     public void setupWalletKit(@Nullable DeterministicSeed seed) {
         // If seed is non-null it means we are restoring from backup.
         File appDataDirectory = AppDataDirectory.get(applicationName).toFile();
+
+        CodecProvider pojoCodecProvider = PojoCodecProvider.builder().automatic(true).build();
+        CodecRegistry pojoCodecRegistry = fromRegistries(getDefaultCodecRegistry(), fromProviders(pojoCodecProvider));
+
+        String uri = "mongodb://127.0.0.1:27017/?retryWrites=true&w=majority";
+        MongoClient mongoClient = MongoClients.create(uri);
+        MongoDatabase database = mongoClient.getDatabase("WalletAPI").withCodecRegistry(pojoCodecRegistry);
         walletAppKit = new WalletAppKit(network, preferredOutputScriptType, keyChainGroupStructure, appDataDirectory, walletFileName) {
             @Override
             protected void onSetupCompleted() {
